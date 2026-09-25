@@ -1,4 +1,3 @@
-```markdown
 # ArokoDB — Embedded Vector Database Engine
 
 **RFC Specification:** RFC-0014  
@@ -124,7 +123,6 @@ Distance calculations are executed via inline assembly / intrinsic bindings tail
 ArokoDB utilizes a **Single-Writer, Multiple-Reader (SWMR)** concurrency model:
 
 
-```
 
 ```
               +-----------------------------------+
@@ -138,8 +136,6 @@ ArokoDB utilizes a **Single-Writer, Multiple-Reader (SWMR)** concurrency model:
                                 |
                                 | Atomic Pointer Swap
                                 v
-
-```
 
 +-----------------------------------------------------------------------+
 |                      Read-Only HNSW Graph (mmap)                      |
@@ -226,10 +222,5 @@ int32_t aroko_query(
 void aroko_close(ArokoDB* db);
 
 #endif
-
-```
-
-```
-d C-interop layer for ArokoDB to show how Flutter communicates with the Rust engine."/>
 
 ```
