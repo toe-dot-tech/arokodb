@@ -1,0 +1,23 @@
+# Rust build output
+**/target/
+**/target-*/
+*.pdb
+*.exe
+
+# Android and IDE-generated files
+**/.gradle/
+**/.kotlin/
+**/.idea/
+**/build/
+**/local.properties
+*.iml
+*.apk
+*.aab
+*.class
+
+# Local secrets and signing material
+.env
+.env.*
+*.jks
+*.keystore
+*.p12

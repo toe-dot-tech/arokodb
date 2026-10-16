@@ -1,226 +1,159 @@
-# ArokoDB — Embedded Vector Database Engine
+# ArokoDB
 
-**RFC Specification:** RFC-0014  
-**Status:** IMPLEMENTATION / ARCHITECTURAL SPEC  
-**Author:** Emmanuel Orimoloye ([@toe-dot-tech](https://github.com/toe-dot-tech))  
-**Core Language:** Rust (C/Dart FFI Bindings)  
-**Target Runtimes:** iOS, Android, macOS, Linux, Windows  
+ArokoDB is an in-progress embedded vector-search project. This repository
+currently contains a runnable **Windows desktop demo** backed by a Rust exact
+vector-search baseline and an **Android app connected to the same Rust engine
+through JNI**.
 
----
+The portfolio target (100,000 vectors, HNSW, mmap, low memory/latency, and
+multiple platforms) is a design goal, not a result demonstrated by the current
+implementation. The Windows demo supports configurable dimensions, unique
+vector IDs, CSV import/export, top-K search, and squared Euclidean, cosine, and
+Manhattan distance. Vectors live only in memory until exported, and search
+scans every vector, so results are exact but the index is not HNSW.
 
-## 1. System Overview & Problem Statement
+## Requirements
 
-Modern mobile and edge applications increasingly depend on real-time semantic search, local Retrieval-Augmented Generation (RAG), and on-device user embeddings. Existing vector databases (e.g., Qdrant, Milvus, Pinecone) are architected as network-attached, client-server cloud systems. When bundled into mobile runtimes, they suffer from severe operational constraints:
+- Windows 10/11, 64-bit, for the desktop UI.
+- Rust installed with the `x86_64-pc-windows-msvc` target. Install the
+  **MSVC C++ Build Tools** if Rust reports that the linker is missing.
+- Android Studio, Android SDK platform/build-tools 35, NDK
+  `28.2.13676358`, JDK 17, and Rust Android targets for Android development;
+  see [Android app](#android-app).
 
-1. **High Active Memory Footprint:** Loading high-dimensional floating-point index structures (e.g., 100,000 vectors at 768 dimensions = ~300 MB raw `f32` data) into mobile process RAM triggers OS Out-Of-Memory (OOM) kills.
-2. **Cold-Start Allocation Overhead:** Deserializing large vector graphs from disk into heap allocations at startup introduces multi-second main-thread stalls.
-3. **IPC / Serialization Bottlenecks:** Passing high-dimensional embeddings across native application boundaries (e.g., via JSON or Protobuf IPC) saturates process memory bandwidth.
+## Windows desktop app
 
-**ArokoDB** solves these constraints by providing an embedded, zero-copy, memory-mapped (`mmap`) vector engine written in Rust. It delivers <12ms p99 recall latency across 100,000 768-dimensional vectors while capping active RAM usage below **35 MB**.
+The Windows app opens into **Vector Studio**, a clear workspace for entering
+vectors, searching for similar items, and importing or exporting CSV. Its
+**Industry ideas** section explains possible uses in banking and finance,
+cryptocurrency, healthcare, news and digital media, AI, social and community,
+fitness and wellness, and education. These are product ideas told in everyday
+language, not claims that the app is already connected to those industries.
 
----
+Run these commands in PowerShell from the repository root:
 
-## 2. System Architecture
-
-ArokoDB operates in-process alongside the host application runtime (Flutter/Dart, Swift, or C++), communicating directly over FFI via shared memory pointers.
-
-
+```powershell
+cargo test --manifest-path rust\aroko-core\Cargo.toml
+cargo test --manifest-path rust\aroko-windows\Cargo.toml
+cargo run --release --manifest-path rust\aroko-windows\Cargo.toml
 ```
 
-+-------------------------------------------------------------------------+
-|                         Host Application Process                        |
-|                                                                         |
-|  +---------------------+      +--------------------------------------+  |
-|  | Flutter / Swift UI  |      |   Local Embedding Model (e.g., ONNX) |  |
-|  +----------+----------+      +------------------+-------------------+  |
-|             |                                    |                      |
-|             | Query Pointer                      | 768-dim f32 vector   |
-|             v                                    v                      |
-|  +-------------------------------------------------------------------+  |
-|  |                    ArokoDB C / FFI Binding Layer                   |  |
-|  +----------------------------------+--------------------------------+  |
-|                                     |                                   |
-+-------------------------------------|-----------------------------------+
-| Direct In-Memory FFI Call
-v
-+-------------------------------------------------------------------------+
-|                       ArokoDB Native Core Engine (Rust)                 |
-|                                                                         |
-|  +-------------------------------------------------------------------+  |
-|  |                 SIMD Vector Distance Engine                       |  |
-|  |        (ARM NEON / x86 AVX2 Dot Product, Cosine, L2 Distance)     |  |
-|  +----------------------------------+--------------------------------+  |
-|                                     |                                   |
-|  +----------------------------------v--------------------------------+  |
-|  |             Hierarchical Navigable Small World (HNSW)             |  |
-|  |               Graph Index Execution Engine (M=16)                 |  |
-|  +----------------------------------+--------------------------------+  |
-|                                     |                                   |
-|  +----------------------------------v--------------------------------+  |
-|  |             Zero-Copy Memory-Mapped Storage Layer                 |  |
-|  |              (mmap Engine with Scalar Quantization SQ8)           |  |
-|  +----------------------------------+--------------------------------+  |
-|                                     |                                   |
-+-------------------------------------|-----------------------------------+
-|
-v
-+---------------------------------+
-| Persistent Disk File (`.aroko`) |
-+---------------------------------+
+The final command builds the app if needed and launches it. To rebuild the
+standalone release executable without launching the window:
 
+```powershell
+cargo build --release --manifest-path rust\aroko-windows\Cargo.toml
 ```
 
----
+The updated executable is written to:
 
-## 3. Storage Engine & Memory Allocation Model
-
-### 3.1 Memory-Mapped Page Layout (`mmap`)
-
-Rather than allocating index vectors on the heap, ArokoDB maps its custom single-file storage format (`.aroko`) directly into the process's virtual address space using OS page tables.
-
-
+```text
+rust\aroko-windows\target\release\aroko-windows.exe
 ```
 
-+-----------------------------------------------------------------------+
-| File Header (64 Bytes)   | Magic Bytes, Version, Dimension, Metric    |
-+--------------------------+--------------------------------------------+
-| Vector Data Segment      | Contiguous Quantized Vector Blobs (SQ8/FP16)|
-+--------------------------+--------------------------------------------+
-| HNSW Graph Entrypoints   | Layer-wise Node Link Lists & Offsets       |
-+--------------------------+--------------------------------------------+
-| Write-Ahead Log (WAL)    | Uncommitted Delta Ingestion Buffer         |
-+-----------------------------------------------------------------------+
+Launch the already-built executable from PowerShell:
 
+```powershell
+.\rust\aroko-windows\target\release\aroko-windows.exe
 ```
 
-* **Virtual Address Alignment:** All vector data offsets are 64-byte aligned to match SIMD cache-line requirements.
-* **Lazy Page Page-In:** The Operating System manages physical RAM allocations via `madvise(MADV_RANDOM)`. Unrequested vector clusters are never paged into physical memory.
-* **Instant Cold Starts:** Initializing the database takes **< 1.5ms**, requiring only a file descriptor open and virtual space mapping without disk-to-heap parsing.
+Cargo automatically rebuilds when source files or dependencies have changed.
+To force a clean rebuild if the executable seems stale, run:
 
----
-
-## 4. SIMD Acceleration & Vector Quantization
-
-### 4.1 Scalar Quantization (SQ8)
-
-To compress embedding sizes by 75% without compromising recall accuracy, ArokoDB converts standard 32-bit floating point values (`f32`) to 8-bit unsigned integers (`u8`):
-
-$$q_i = \lfloor \frac{v_i - v_{\min}}{v_{\max} - v_{\min}} \times 255 \rceil$$
-
-This reduces a 768-dimensional vector footprint from **3,072 bytes to 768 bytes**, allowing 4x more vectors to fit within the CPU L2/L3 cache.
-
-### 4.2 SIMD Inner Product Engine
-
-Distance calculations are executed via inline assembly / intrinsic bindings tailored to the host CPU architecture:
-
-* **ARM v8+ (Mobile):** NEON vector instructions (`vdotq_u32`, `vld1q_u8`) computing 16 dot-product operations per clock cycle.
-* **x86_64 (Desktop):** AVX2/FMA instructions computing 32 dot-product operations per clock cycle.
-
----
-
-## 5. Concurrency & Thread Safety
-
-ArokoDB utilizes a **Single-Writer, Multiple-Reader (SWMR)** concurrency model:
-
-
-
-```
-              +-----------------------------------+
-              |          Writer Thread            |
-              +-----------------+-----------------+
-                                |
-                                v
-              +-----------------------------------+
-              |      Write-Ahead Log (WAL)        |
-              +-----------------+-----------------+
-                                |
-                                | Atomic Pointer Swap
-                                v
-
-+-----------------------------------------------------------------------+
-|                      Read-Only HNSW Graph (mmap)                      |
-|                                                                       |
-|   +-------------------+  +-------------------+  +-------------------+ |
-|   | Reader Thread 1   |  | Reader Thread 2   |  | Reader Thread N   | |
-|   +-------------------+  +-------------------+  +-------------------+ |
-+-----------------------------------------------------------------------+
-
+```powershell
+cargo clean --manifest-path rust\aroko-windows\Cargo.toml
+cargo build --release --manifest-path rust\aroko-windows\Cargo.toml
 ```
 
-1. **Lock-Free Reader Operations:** Reader threads traverse the memory-mapped HNSW graph without acquiring mutexes or rwlocks, eliminating reader-writer contention.
-2. **Copy-On-Write (COW) Index Updates:** Graph mutations occur inside an isolated staging memory region. Once a batch mutation completes, the entry-node pointer is atomically updated using `std::sync::atomic::AtomicU64`.
+`cargo clean` removes generated build output for this crate; it does not remove
+source files. Do not copy the executable alone to another computer unless its
+Rust/MSVC runtime requirements are also satisfied.
 
----
+### Using the demo
 
-## 6. Performance Benchmarks
+1. Set **Vector dimension** (default `3`) and select **Apply dimension** before
+   adding vectors. To change the dimension after adding data, select **Clear
+   vectors** first; clearing permanently removes the current in-memory data.
+2. Enter a unique non-negative **Vector ID** and exactly that many comma-
+   separated values, for example `0.1, 0.2, 0.3`; then select **Add vector**.
+3. Enter a query with the same number of values, choose **Top K** and a
+   **Distance metric**, then select **Search**. Results are sorted closest
+   first. Cosine distance is `1 - cosine similarity`; lower scores are closer
+   for all three metrics.
+4. To save or load data, enter a CSV path (default `vectors.csv`) and select
+   **Export CSV** or **Import CSV**. Relative paths use the process's current
+   working directory. Imports are rejected if the header/dimension is wrong,
+   IDs repeat, or an ID already exists in the current index.
 
-### Benchmark Environment
-* **Hardware:** Apple M2 Pro (Mobile Edge Profile) / Intel i7-13700K
-* **Dataset:** 100,000 Vectors, 768 Dimensions (`f32` normalized)
-* **Metric:** Cosine Distance, Top-10 Nearest Neighbors ($K=10$)
+CSV uses one vector per row, with an `id` column followed by dimension columns.
+For a three-dimensional index:
 
-| Engine | Storage Mode | Cold Start Latency | p50 Latency | p99 Latency | Active Memory Footprint |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **ArokoDB (SQ8 + mmap)** | Memory-Mapped File | **1.2 ms** | **3.8 ms** | **11.4 ms** | **31.2 MB** |
-| Standard In-Memory HNSW | Heap Memory Allocation | 840 ms | 2.1 ms | 8.2 ms | 342.0 MB |
-| SQLite (Vector Extension) | Disk B-Tree | 12.0 ms | 48.6 ms | 124.0 ms | 45.0 MB |
-
----
-
-## 7. FFI & API Usage Example
-
-### Rust Core API
-```rust
-use arokodb::{Database, DistanceMetric, QueryOptions};
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Open memory-mapped vector database
-    let db = Database::open("./vectors.aroko", DistanceMetric::Cosine)?;
-
-    // 768-dimensional query vector
-    let query_vector: Vec<f32> = vec![0.023; 768];
-
-    // Execute ANN search (Top-5)
-    let results = db.query(
-        &query_vector, 
-        5, 
-        QueryOptions { ef_search: 64 }
-    )?;
-
-    for result in results {
-        println!("ID: {}, Distance: {:.4}", result.id, result.distance);
-    }
-
-    Ok(())
-}
-
+```csv
+id,v1,v2,v3
+10,0.1,0.2,0.3
+11,1,0,0
 ```
 
-### Native C FFI Header (`arokodb.h`)
+CSV fields are plain comma-separated numbers (quoted fields are not supported).
+To avoid losing changes, export before closing the app.
 
-```c
-#ifndef AROKODB_H
-#define AROKODB_H
+From **Industry ideas**, choose **Try this example** to load three small
+illustrative vectors and run a sample search in Vector Studio. These made-up
+numbers demonstrate the controls; they are not real text embeddings or
+measured industry results.
 
-#include <stdint.h>
+## Android app
 
-typedef struct ArokoDB ArokoDB;
+The Android project is a Kotlin UI connected to the Rust exact-search core by
+a JNI bridge. It supports configurable vector dimensions, custom IDs,
+nearest-neighbor search, and squared Euclidean, cosine, and Manhattan distance.
+The index is exact and in-memory; the Android preview does not yet persist
+vectors or support CSV import/export.
 
-typedef struct {
-    uint64_t id;
-    float distance;
-} ArokoQueryResult;
+From PowerShell at the repository root, build the debug APK:
 
-ArokoDB* aroko_open(const char* path, uint8_t metric_type);
-int32_t aroko_query(
-    const ArokoDB* db, 
-    const float* vector_ptr, 
-    uint32_t dim, 
-    uint32_t k, 
-    ArokoQueryResult* out_results
-);
-void aroko_close(ArokoDB* db);
-
-#endif
-
+```powershell
+cd KotlinProject
+.\gradlew.bat assembleDebug
 ```
+
+The APK is written to
+`KotlinProject\build\outputs\apk\debug\ArokoDB-debug.apk`. Start an emulator
+from Android Studio, then install and launch the app:
+
+```powershell
+& "$env:ANDROID_HOME\platform-tools\adb.exe" wait-for-device
+.\gradlew.bat installDebug
+& "$env:ANDROID_HOME\platform-tools\adb.exe" shell am start -n com.arokodb/.MainActivity
+```
+
+See [KotlinProject/README.md](KotlinProject/README.md) for Android setup,
+emulator, rebuild, and troubleshooting instructions.
+
+## Repository layout
+
+```text
+rust\
+  aroko-core\       Rust exact-search core shared by clients
+  aroko-windows\    Native Windows demo application
+  aroko-ffi\        JNI bridge used by the Android app
+  aroko-storage\    Incomplete storage/mmap prototype
+KotlinProject\      Kotlin Android app and Gradle build
+```
+
+Keep the Windows UI and Android UI as separate platform clients, with the
+vector engine in Rust. The Windows Rust executable calls the core directly,
+while Android calls it through JNI. Do not describe the storage prototype as
+mmap-backed or the index as HNSW until those implementations have been
+completed and tested.
+
+## Current project limitations
+
+- Search is exact and linear in the number of stored vectors.
+- The Windows demo keeps data in memory while open; CSV export/import provides
+  manual persistence. It does not use FFI.
+- Android uses the Rust exact-search core through JNI, but vectors are
+  in-memory only and are discarded when the app process ends.
+- The Rust storage and FFI crates are prototypes and are not part of the
+  working Windows application.
+- No 100,000-vector latency, memory, or cross-platform benchmark is included.
