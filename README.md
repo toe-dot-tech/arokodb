@@ -29,6 +29,10 @@ vectors, searching for similar items, and importing or exporting CSV. Its
 cryptocurrency, healthcare, news and digital media, AI, social and community,
 fitness and wellness, and education. These are product ideas told in everyday
 language, not claims that the app is already connected to those industries.
+The app defaults to a light appearance with a light/dark toggle, and its search
+particle map leads Vector Studio with an animated replay of the exact scan and
+nearest matches. The interface uses bundled Lucide icons for consistent
+rendering on Windows.
 
 Run these commands in PowerShell from the repository root:
 

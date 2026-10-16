@@ -91,6 +91,8 @@ version = "0.1.0"
 dependencies = [
  "aroko-core",
  "eframe",
+ "image",
+ "lucide-icons",
 ]
 
 [[package]]
@@ -1029,6 +1031,12 @@ name = "log"
 version = "0.4.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
+
+[[package]]
+name = "lucide-icons"
+version = "1.57.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e926a2ffc8cda3ffb6689b0c362cd9e3ded16da82a487c5f4cb9de07e1a8bf96"
 
 [[package]]
 name = "memchr"
